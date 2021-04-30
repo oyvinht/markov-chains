@@ -13,5 +13,5 @@ A Clojure library for working with Markov Models, including finding most likely 
   (->
     (baum-welch hmm [:N :N :N :N :N :E :E :N :N :N] 100 [:N :E]) ; Learn
     (viterbi [:N :E :N]))) ; Find most likely transition sequence
-  -> {:path (:s2 :s1 :s2), :prob 0.07142854958038428}
+> {:path (:s2 :s1 :s2), :prob 0.07142854958038428}
   ```
