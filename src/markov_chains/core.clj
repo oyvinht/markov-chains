@@ -3,9 +3,20 @@
 ;;;;---------------------------------------------------------------------------
 ;;;; General helper code.
 ;;;;---------------------------------------------------------------------------
-(defn sum [fn seq]
+(defn- sumfn [fn seq]
   "Map fn over seq and sum all results."
   (apply + (map fn seq)))
+
+(defn- n [m]
+  "Helper: Normalize map of probabilities."
+  (let [s (apply + (vals  m))]
+    (if (== s 0)
+      m
+      (into {} (for [[k v] m] {k (/ v s)})))))
+
+(defn- m [seq-of-pairs]
+  "Helper: Convert seq of 2-elem vectors into a map."
+  (into {} seq-of-pairs))
 
 ;;;;---------------------------------------------------------------------------
 ;;;; Code for generating matrices from example data.
@@ -57,8 +68,7 @@
 (defstruct hmm
   :A ; Per state probability of moving to each next state
   :B ; Per state probability of observing any of M
-  :π ; Per state probability of being the sequence starting point
-  )
+  :π) ; Per state probability of being the sequence starting point
 
 (defn make-hmm [state-sequences state-outcomes]
   "Create a HMM from a seq of state sequences and a seq of state outcomes."
@@ -89,71 +99,67 @@
   (get (:π hmm) state 0))
 
 (defn init-probs [hmm]
-  "Get probabilities of alle states at start time."
+  "Get probabilities of all states at start time."
   (:π hmm))
        
-(defn- n [m]
-  "Helper: Normalize map of probabilities."
-  (let [s (apply + (vals  m))]
-    (if (== s 0)
-      m
-      (into {} (for [[k v] m] {k (/ v s)})))))
-
-(defn- m [seq-of-pairs]
-  "Helper: Convert seq of 2-elem vectors into a map."
-  (into {} seq-of-pairs))
-
-(defn forward [hmm observations]
+(def ^:private forwards
   "Build an ordered list of maps with forward probabilities (alphas) per state."
-  (loop [α [(m (map (fn [s] ; Base case
-                      {s (* (init-prob hmm s)
-                            (outcome-prob hmm s (first observations)))})
-                    (states hmm)))]
-         obs (rest observations)]
-    (if (empty? obs)
-      α
-      (recur (concat α
-                     [(m
-                       (for [s_t+1 (states hmm)]
-                         {s_t+1 (apply ; Inductive case
-                                 + (map
-                                    (fn [α_s]
-                                      (* (val α_s)
-                                         (transition-prob hmm (key α_s) s_t+1)
-                                         (outcome-prob hmm s_t+1 (first obs))))
-                                    (nth α (dec (count α)))))}))])
-             (rest obs)))))
+  (memoize
+   (fn [hmm observations]
+     (loop [α [(m (map (fn [s] ; Base case
+                         {s (* (init-prob hmm s)
+                               (outcome-prob hmm s (first observations)))})
+                       (states hmm)))]
+            obs (rest observations)]
+       (if (empty? obs)
+         α
+         (recur
+          (concat α
+                  [(m
+                    (for [s_t+1 (states hmm)]
+                      {s_t+1 (apply ; Inductive case
+                              + (map
+                                 (fn [α_s]
+                                   (* (val α_s)
+                                      (transition-prob hmm (key α_s) s_t+1)
+                                      (outcome-prob hmm s_t+1 (first obs))))
+                                 (nth α (dec (count α)))))}))])
+          (rest obs)))))))
+
+(defn- forward [hmm observations time state]
+  "Get the forward probability of state at time given hmm and observations."
+  (get (nth (forwards hmm observations) time) state))
 
 (defn sequence-prob [hmm observations]
-  "The probability of seing a the sequence of observations given hmm: P(O|λ)."
-  (let [fwds (forward hmm observations)]
-    (sum (fn [s] (get (last fwds) s)) (states hmm))))
+  "The probability of seing the sequence of observations given hmm: P(O|λ)."
+  (let [fwds (forwards hmm observations)]
+    (sumfn (fn [s] (get (last fwds) s)) (states hmm))))
 
-(defn backward [hmm observations]
+(def ^:private backwards
   "Build an ordered list of maps with backward probabilities (betas) per state."
-  (loop [β (list (m (map (fn [s] {s 1}) (states hmm))))
-         obs observations]
-    (if (empty? obs)
-      β
-      (recur (concat
-              [(m (for [s (states hmm)]
-                    {s (apply + (map (fn [β_s_t+1]
-                                       (* (val β_s_t+1)
-                                          (transition-prob hmm s (key β_s_t+1))
-                                          (outcome-prob hmm
-                                                        (key β_s_t+1)
-                                                        (last obs))))
-                                     (first β)))}))]
-              β)
-             (butlast obs)))))
+  (memoize
+   (fn [hmm observations]
+     (loop [β (list (m (map (fn [s] {s 1}) (states hmm))))
+            obs observations]
+       (if (empty? obs)
+         β
+         (recur
+          (concat
+           [(m (for [s (states hmm)]
+                 {s (apply + (map (fn [β_s_t+1]
+                                    (* (val β_s_t+1)
+                                       (transition-prob hmm s (key β_s_t+1))
+                                       (outcome-prob hmm
+                                                     (key β_s_t+1)
+                                                     (last obs))))
+                                  (first β)))}))]
+           β)
+          (butlast obs)))))))
 
-(defn forward-backward [hmm observations]
-  (let [fwds (forward hmm observations)
-        bwds (backward hmm observations)]
-    (map (fn [fw bw] (m (for [[k v] fw] {k (* v (get bw k))})))
-         (cons (init-probs hmm) fwds)
-         bwds)))
-
+(defn- backward [hmm observations time state]
+  "Get the backward probability of state at time given hmm and observations."
+  (get (nth (rest (backwards hmm observations)) time) state))
+  
 (defn- argmax [paths]
   (loop [paths paths best (first paths)]
     (if (empty? paths)
@@ -187,106 +193,79 @@
 ;;;;---------------------------------------------------------------------------
 ;;;; Code for learning HMM from observations.
 ;;;;---------------------------------------------------------------------------
-(defn rand-transition-probs [states]
+(defn- rand-transition-probs [states]
   "Create a nested hash map with random transition probs between states."
-  (into {}
-        (map (fn [i]
-               {i (into {} (map (fn [j] {j (rand)}) states))})
-             states)))
+  (m (map (fn [i] {i (m (map (fn [j] {j (rand)}) states))}) states)))
 
-(defn rand-outcome-probs [states vocabulary]
+(defn- rand-outcome-probs [states vocabulary]
   "Create a nested hash map with random outcome probs from states."
-  (into {}
-        (map (fn [i]
-               {i (into {} (map (fn [j] {j (rand)}) vocabulary))})
-             states)))
+  (m (map (fn [i] {i (m (map (fn [j] {j (rand)}) vocabulary))}) states)))
 
-(defn random-hmm [num-hidden-states]
+(defn random-hmm [num-hidden-states vocabulary]
+  "Create an HMM with random init, transition and outcome probabilities."
   (let [init-states (take num-hidden-states (repeatedly (fn [] (gensym "S-"))))
-        init (into {} (for [s init-states] {s (/ 1 num-hidden-states)}))
+        init (m (for [s init-states] {s (/ 1 num-hidden-states)}))
         A (rand-transition-probs init-states)
-        B (rand-outcome-probs init-states '[N E])]
+        B (rand-outcome-probs init-states vocabulary)]
     (init-hmm init A B)))
 
-(defn baum-welch [hmm observations num-iterations]
+(def ξ
+  (memoize
+   (fn [hmm observations t i j]
+     (str
+      "Expected state transition count:"
+      "Probability of being in state 'i' at time 't'"
+      "then in state 'j' at time 't+1'.")
+     (/ (* (forward hmm observations t i)
+           (transition-prob hmm i j)
+           (outcome-prob hmm j (nth observations (inc t)))
+           (backward hmm observations (inc t) j))
+        (sumfn (fn [i]
+                 (sumfn (fn [j]
+                          (* (forward hmm observations t i)
+                             (transition-prob hmm i j)
+                             (outcome-prob hmm j (nth observations (inc t)))
+                             (backward hmm observations (inc t) j)))
+                        (states hmm)))
+               (states hmm))))))
+
+(def γ
+  (memoize
+   (fn [hmm observations t i]
+     "Expected state occupancy."
+     (/ (* (forward hmm observations t i)
+           (backward hmm observations t i))
+        (sumfn (fn [s]
+                 (* (forward hmm observations t s)
+                    (backward hmm observations t s)))
+               (states hmm))))))
+
+(defn baum-welch [hmm observations num-iterations vocabulary]
   "Return an improved HMM by training on observations num-iteration times."
-  (let [fwds (forward hmm observations)
-        bwds (rest (backward hmm observations))]
+  (let [h hmm obs observations T (count observations)]
     (letfn
-        [(ξ [t i j]
-           ;; Expected state transition count:
-           ;; Probability of being in state 'i' at time 't'
-           ;; then in state 'j' at time 't+1'.
-           (/ (* (get (nth fwds t) i)
-                 (transition-prob hmm i j)
-                 (outcome-prob hmm j (nth observations (inc t)))
-                 (get (nth bwds (inc t)) j))
-              (sum (fn [i]
-                     (sum (fn [j]
-                            (* (get (nth fwds t) i)
-                               (transition-prob hmm i j)
-                               (outcome-prob hmm j (nth observations (inc t)))
-                               (get (nth bwds (inc t)) j)))
-                          (states hmm)))
-                   (states hmm))))
-         (γ [t i]
-           ;; Expected state occupancy count.
-           (/ (* (get (nth fwds t) i)
-                 (get (nth bwds t) i))
-              (sum (fn [s]
-                     (* (get (nth fwds t) s)
-                        (get (nth bwds t) s)))
-                   (states hmm))))
-         (a [i j]
+        [(a [i j]
            ;; Excpected num transitions divided by total num transitions from i.
-           (/ (sum (fn [t] (ξ t i j)) (range (dec (count observations))))
-              (sum (fn [t] (γ t i)) (range (dec (count observations))))))
+           (/ (sumfn (fn [t] (ξ h obs t i j)) (range (dec T)))
+              (sumfn (fn [t] (γ h obs t i)) (range (dec T)))))
          (b [j v_k]
            ;; Expected num times in j observing v_k divided by
            ;; by tot expected num of times in j.
-           (/ (sum (fn [t] (if (= v_k (nth observations t)) (γ t j) 0))
-                   (range (count observations)))
-              (sum (fn [t] (γ t j)) (range (count observations)))))]
-      (let [new-init (into {} (map (fn [s] {s (γ 0 s)}) (states hmm)))
-            new-A (into {} (map (fn [i]
-                                  {i (n (m (map (fn [j]
-                                                  {j (a i j)})
-                                                (states hmm))))})
-                                (states hmm)))
-            new-B  (into {} (map (fn [j] {j (n (m (map (fn [o]
-                                                         {o (b j o)})
-                                                       (set observations))))})
-                                 (states hmm)))
-            new-hmm (init-hmm new-init new-A new-B)]
-        (comment
-          (doall
-           (map (fn [x]
-                  (println
-                   (γ x (nth (states hmm) x))
-                   "="
-                   (sum (fn [j] (ξ x (nth (states hmm) x) j)) (states hmm)) "?"
-                   (= (sum (fn [j] (ξ x (nth (states hmm) x) j)) (states hmm))
-                      (γ x (nth (states hmm) x)))))
-                (range (count (states hmm))))))
-        ;; (println "Forwards:")
-        ;; (println fwds)
-        ;; (println "New PI:" new-init)
-        ;; (println "New A:")
-        ;; ;(clojure.pprint/pprint new-A)
-        ;; (println "New B:")
-        ;; ;(clojure.pprint/pprint new-B)
-        ;; (println "FWDS" (apply + (vals (last fwds))))
-        (if (= num-iterations 0)
+           (/
+            (sumfn (fn [t] (if (= v_k (nth obs t)) (γ h obs t j) 0)) (range T))
+            (sumfn (fn [t] (γ h obs t j)) (range T))))]
+     
+      (let [new-hmm (init-hmm
+                     ;; New state start probabilities:
+                     (m (map (fn [s] {s (γ h obs 0 s)}) (states hmm)))
+                     ;; New state transition probabilities:
+                     (m (map (fn [i] {i (n (m (map (fn [j] {j (a i j)})
+                                                   (states hmm))))})
+                             (states hmm)))
+                     ;; New state outcome probabilities
+                     (m (map (fn [j] {j (n (m (map (fn [o] {o (b j o)})
+                                                   vocabulary)))})
+                             (states hmm))))]
+        (if (= num-iterations 1)
           new-hmm
-          (baum-welch new-hmm observations (dec num-iterations)))
-        ))))
-  
-(defn test-baum-welch []
-  (let [hmm (init-hmm
-             {:s1 0.2 :s2 0.8}
-             {:s1 {:s1 0.5 :s2 0.5}
-              :s2 {:s1 0.3 :s2 0.7}}
-             {:s1 {:N 0.3 :E 0.7}
-              :s2 {:N 0.8 :E 0.2}})]
-
-    (baum-welch hmm [:N :N :N :N :N :E :E :N :N :N] 1)))
+          (recur new-hmm obs (dec num-iterations) vocabulary))))))
