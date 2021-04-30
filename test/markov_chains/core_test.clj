@@ -138,7 +138,20 @@
                        (sut/states h))))))
              (range (count (sut/states h)))))))))
 
-(deftest test-baum-welch
+(deftest test-baum-welch-1
+  (testing "Testing if Baum-Welch converges towards correct hi-prec. value."
+    (let [hmm (sut/init-hmm {:s1 1/5 :s2 4/5}
+                            {:s1 {:s1 1/2 :s2 1/2}
+                             :s2 {:s1 3/10 :s2 7/10}}
+                            {:s1 {:N 3/10 :E 7/10}
+                             :s2 {:N 4/5 :E 1/5}})]
+      (is
+       (= 3364526423555802/15688595904862135
+          (get-in
+           (sut/baum-welch hmm [:N :N :N :N :N :E :E :N :N :N] 1 [:N :E])
+           [:A :s2 :s1]))))))
+
+(deftest test-baum-welch-2
   (testing "Testing if Baum-Welch converges towards correct value."
     (let [hmm (sut/init-hmm {:s1 0.2 :s2 0.8}
                             {:s1 {:s1 0.5 :s2 0.5}

@@ -266,6 +266,6 @@
                      (m (map (fn [j] {j (n (m (map (fn [o] {o (b j o)})
                                                    vocabulary)))})
                              (states hmm))))]
-        (if (= num-iterations 1)
+        (if (<= num-iterations 1)
           new-hmm
           (recur new-hmm obs (dec num-iterations) vocabulary))))))
