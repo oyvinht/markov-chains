@@ -209,7 +209,7 @@
         B (rand-outcome-probs init-states vocabulary)]
     (init-hmm init A B)))
 
-(def ξ
+(def ^:private ξ
   (memoize
    (fn [hmm observations t i j]
      (str
@@ -229,7 +229,7 @@
                         (states hmm)))
                (states hmm))))))
 
-(def γ
+(def ^:private γ
   (memoize
    (fn [hmm observations t i]
      "Expected state occupancy."
@@ -254,7 +254,6 @@
            (/
             (sumfn (fn [t] (if (= v_k (nth obs t)) (γ h obs t j) 0)) (range T))
             (sumfn (fn [t] (γ h obs t j)) (range T))))]
-     
       (let [new-hmm (init-hmm
                      ;; New state start probabilities:
                      (m (map (fn [s] {s (γ h obs 0 s)}) (states hmm)))
