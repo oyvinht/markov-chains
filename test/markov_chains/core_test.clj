@@ -148,7 +148,7 @@
       (is
        (= 3364526423555802/15688595904862135
           (get-in
-           (sut/baum-welch hmm [:N :N :N :N :N :E :E :N :N :N] 1 [:N :E])
+           (sut/baum-welch hmm [:N :N :N :N :N :E :E :N :N :N] 1)
            [:A :s2 :s1]))))))
 
 (deftest test-baum-welch-2
@@ -162,6 +162,6 @@
        (= (float 0.14285715)
           (float
            (get-in
-            (sut/baum-welch hmm [:N :N :N :N :N :E :E :N :N :N] 1000 [:N :E])
+            (sut/baum-welch hmm [:N :N :N :N :N :E :E :N :N :N] 1000)
             [:A :s2 :s1])))))))
 

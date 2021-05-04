@@ -68,16 +68,19 @@
 (defstruct hmm
   :A ; Per state probability of moving to each next state
   :B ; Per state probability of observing any of M
+  :M ; Vocabulary for observations/emissions
   :π) ; Per state probability of being the sequence starting point
 
 (defn make-hmm [state-sequences state-outcomes]
   "Create a HMM from a seq of state sequences and a seq of state outcomes."
   (let [tp (transition-probs state-sequences)
         op (outcome-probs state-outcomes)]
-    (struct-map hmm :A (dissoc tp nil) :B op :π (get tp nil))))
+    (struct-map
+     hmm :A (dissoc tp nil) :B op :M (keys (first (vals op))) :π (get tp nil))))
 
 (defn init-hmm [init-probs transition-probs outcome-probs]
-  (struct-map hmm :A transition-probs :B outcome-probs :π init-probs))
+  (struct-map hmm :A transition-probs :B outcome-probs
+              :M (keys (first (vals outcome-probs))) :π init-probs))
 
 ;;;;---------------------------------------------------------------------------
 ;;;; Code for working on HMMs
@@ -240,7 +243,7 @@
                     (backward hmm observations t s)))
                (states hmm))))))
 
-(defn baum-welch [hmm observations num-iterations vocabulary]
+(defn baum-welch [hmm observations num-iterations]
   "Return an improved HMM by training on observations num-iteration times."
   (let [h hmm obs observations T (count observations)]
     (letfn
@@ -263,8 +266,8 @@
                              (states hmm)))
                      ;; New state outcome probabilities
                      (m (map (fn [j] {j (n (m (map (fn [o] {o (b j o)})
-                                                   vocabulary)))})
+                                                   (:M h))))})
                              (states hmm))))]
         (if (<= num-iterations 1)
           new-hmm
-          (recur new-hmm obs (dec num-iterations) vocabulary))))))
+          (recur new-hmm obs (dec num-iterations)))))))
