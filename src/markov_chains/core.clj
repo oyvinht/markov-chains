@@ -243,31 +243,44 @@
                     (backward hmm observations t s)))
                (states hmm))))))
 
-(defn baum-welch [hmm observations num-iterations]
-  "Return an improved HMM by training on observations num-iteration times."
-  (let [h hmm obs observations T (count observations)]
-    (letfn
-        [(a [i j]
-           ;; Excpected num transitions divided by total num transitions from i.
-           (/ (sumfn (fn [t] (ξ h obs t i j)) (range (dec T)))
-              (sumfn (fn [t] (γ h obs t i)) (range (dec T)))))
-         (b [j v_k]
-           ;; Expected num times in j observing v_k divided by
-           ;; by tot expected num of times in j.
-           (/
-            (sumfn (fn [t] (if (= v_k (nth obs t)) (γ h obs t j) 0)) (range T))
-            (sumfn (fn [t] (γ h obs t j)) (range T))))]
-      (let [new-hmm (init-hmm
-                     ;; New state start probabilities:
-                     (m (map (fn [s] {s (γ h obs 0 s)}) (states hmm)))
-                     ;; New state transition probabilities:
-                     (m (map (fn [i] {i (n (m (map (fn [j] {j (a i j)})
-                                                   (states hmm))))})
-                             (states hmm)))
-                     ;; New state outcome probabilities
-                     (m (map (fn [j] {j (n (m (map (fn [o] {o (b j o)})
-                                                   (:M h))))})
-                             (states hmm))))]
-        (if (<= num-iterations 1)
-          new-hmm
-          (recur new-hmm obs (dec num-iterations)))))))
+(defn baum-welch [hmm observation-seqs num-iterations]
+  "Return an improved HMM by training on a seq of observation-seqs."
+  (letfn
+      [(a [i j]
+         ;; Excpected num transitions divided by total num transitions from i
+         ;; for all observed sequences
+         (/ (sumfn (fn [obs-seq] (sumfn (fn [t] (ξ hmm obs-seq t i j))
+                                        (range (dec (count obs-seq)))))
+                   observation-seqs)
+            (sumfn (fn [obs-seq] (sumfn (fn [t] (γ hmm obs-seq t i))
+                                        (range (dec (count obs-seq)))))
+                   observation-seqs)))
+       (b [j v_k]
+         ;; Expected num times in j observing v_k divided by
+         ;; by tot expected num of times in j.
+         (/ (sumfn (fn [obs-seq] (sumfn (fn [t] (if (= v_k (nth obs-seq t))
+                                                  (γ hmm obs-seq t j)
+                                                  0))
+                                        (range (count obs-seq))))
+                   observation-seqs)
+            (sumfn (fn [obs-seq] (sumfn (fn [t] (γ hmm obs-seq t j))
+                                        (range (count obs-seq))))
+                   observation-seqs)))]
+    (let [new-hmm
+          (init-hmm
+           ;; New state start probabilities:
+           (m (map (fn [s] {s (/ (sumfn (fn [obs-seq] (γ hmm obs-seq 0 s))
+                                        observation-seqs)
+                                 (count observation-seqs))})
+                   (states hmm)))
+           ;; New state transition probabilities:
+           (m (map (fn [i] {i (n (m (map (fn [j] {j (a i j)})
+                                         (states hmm))))})
+                   (states hmm)))
+           ;; New state outcome probabilities
+           (m (map (fn [j] {j (n (m (map (fn [o] {o (b j o)})
+                                         (:M hmm))))})
+                   (states hmm))))]
+      (if (<= num-iterations 1)
+        new-hmm
+        (recur new-hmm observation-seqs (dec num-iterations))))))
