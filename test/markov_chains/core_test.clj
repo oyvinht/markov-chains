@@ -1,6 +1,9 @@
 (ns markov-chains.core-test
-  (:require [clojure.test :refer :all]
-            [markov-chains.core :as sut]))
+  (:require [clj-async-profiler.core :as prof]
+            [clojure.test :refer :all]
+            [criterium.core :as criterium]
+            [markov-chains.core :as sut]
+            [no.disassemble :as nda]))
 
 ;;;;---------------------------------------------------------------------------
 ;;;; Example state sequences and state outcomes.
@@ -48,14 +51,33 @@
 ;; (deftest test-hmm-rn-fw
 ;;   (testing "Checking alphas of forward algorithm from Russel & Norvig."
 ;;     (is
-;;      (= (list
-;;          {:rain 0.81818181818181810, :no-rain 0.18181818181818182}
+;;      (= [{:rain 0.81818181818181810, :no-rain 0.18181818181818182}
 ;;          {:rain 0.88335704125177800, :no-rain 0.11664295874822190}
 ;;          {:rain 0.19066793972352525, :no-rain 0.80933206027647480}
 ;;          {:rain 0.73079400458498200, :no-rain 0.26920599541501794}
-;;          {:rain 0.86733888957548470, :no-rain 0.13266111042451528})
+;;          {:rain 0.86733888957548470, :no-rain 0.13266111042451528}]
 ;;         (#'sut/forwards example-hmm-rn
 ;;                         [:umbrella :umbrella :no-umbrella :umbrella :umbrella])))))
+
+(defn test-fw []
+  (criterium.core/report-result
+   (criterium.core/quick-benchmark
+    (#'sut/forwards (sut/init-hmm {:rain 0.5 :no-rain 0.5}
+                                  {:rain {:rain 0.7 :no-rain 0.3}
+                                   :no-rain {:rain 0.3 :no-rain 0.7}}
+                                  {:rain {:umbrella 0.9 :no-umbrella 0.1}
+                                   :no-rain {:umbrella 0.2 :no-umbrella 0.8}})
+                    [:umbrella :umbrella :no-umbrella :no-umbrella :umbrella])
+    {})))
+
+;; Evaluation count : 49446 in 6 samples of 8241 calls.
+;;              Execution time mean : 12.524465 µs
+;;     Execution time std-deviation : 397.544214 ns
+;;    Execution time lower quantile : 12.082332 µs ( 2.5%)
+;;    Execution time upper quantile : 13.056886 µs (97.5%)
+;;                    Overhead used : 6.376173 ns
+
+
 
 ;; (deftest test-hmm-rn-bw
 ;;   (testing "Testing backward algorithm on Russel & Norvig example."
@@ -68,20 +90,6 @@
 ;;          {:rain 0.6272727272727272, :no-rain 0.37272727272727274}
 ;;          {:rain 1, :no-rain 1})
 ;;         (#'sut/backwards
-;;          example-hmm-rn
-;;          [:umbrella :umbrella :no-umbrella :umbrella :umbrella])))))
-
-;; (deftest test-hmm-rn-fw-bw
-;;   (testing "Testing forward-backward on Russel & Norvig example."
-;;     (is
-;;      (= (list
-;;          {:rain 0.64693555583019390 :no-rain 0.35306444416980610}
-;;          {:rain 0.86733888957548470 :no-rain 0.13266111042451528}
-;;          {:rain 0.82041905362367540 :no-rain 0.17958094637632463}
-;;          {:rain 0.30748357600661774 :no-rain 0.69251642399338230}
-;;          {:rain 0.82041905362367530 :no-rain 0.17958094637632466}
-;;          {:rain 0.86733888957548470 :no-rain 0.13266111042451528})
-;;         (sut/forward-backward
 ;;          example-hmm-rn
 ;;          [:umbrella :umbrella :no-umbrella :umbrella :umbrella])))))
 
@@ -165,3 +173,16 @@
             (sut/baum-welch hmm [[:N :N :N :N :N :E :E :N :N :N]] 1000)
             :s2 :s1)))))))
 
+(deftest test-baum-welch-3
+  (testing "Performance is reasonable for multiple sequences."
+    (let [hmm (sut/init-hmm {:s1 0.2 :s2 0.8}
+                            {:s1 {:s1 0.5 :s2 0.5}
+                             :s2 {:s1 0.3 :s2 0.7}}
+                            {:s1 {:N 0.3 :E 0.7}
+                             :s2 {:N 0.8 :E 0.2}})
+          seqs (take 20 (repeatedly (fn [] (shuffle [:N :N :N :N :N :E :E :N :N :N]))))]
+      (sut/baum-welch hmm seqs 10))))
+
+(defn serve-files []
+  (prof/serve-files 8080))
+                           

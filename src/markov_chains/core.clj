@@ -104,30 +104,32 @@
 (defn init-probs [hmm]
   "Get probabilities of all states at start time."
   (:π hmm))
-       
+
 (def ^:private forwards
   "Build an ordered list of maps with forward probabilities (alphas) per state."
   (memoize
    (fn [hmm observations]
-     (loop [α [(m (map (fn [s] ; Base case
-                         {s (* (init-prob hmm s)
-                               (outcome-prob hmm s (first observations)))})
-                       (states hmm)))]
-            obs (rest observations)]
-       (if (empty? obs)
-         α
-         (recur
-          (concat α
-                  [(m
-                    (for [s_t+1 (states hmm)]
-                      {s_t+1 (apply ; Inductive case
-                              + (map
-                                 (fn [α_s]
-                                   (* (val α_s)
-                                      (transition-prob hmm (key α_s) s_t+1)
-                                      (outcome-prob hmm s_t+1 (first obs))))
-                                 (nth α (dec (count α)))))}))])
-          (rest obs)))))))
+     (reduce
+      (fn [alphas o]
+        (concat
+         alphas
+         [(reduce (fn [res s_t+1]
+                    (conj
+                     res {s_t+1 (sumfn ; Inductive case
+                                 (fn [alpha_s]
+                                   (* (val alpha_s)
+                                      (transition-prob hmm (key alpha_s) s_t+1)
+                                      (outcome-prob hmm s_t+1 o)))
+                                 (last alphas))}))
+                  {}
+                  (states hmm))]))
+      [(reduce ; Base case
+        (fn [res s]
+          (conj res
+                {s (* (init-prob hmm s)
+                      (outcome-prob hmm s (first observations)))}))
+        {} (states hmm))]
+      (rest observations)))))
 
 (defn- forward [hmm observations time state]
   "Get the forward probability of state at time given hmm and observations."
@@ -142,22 +144,21 @@
   "Build an ordered list of maps with backward probabilities (betas) per state."
   (memoize
    (fn [hmm observations]
-     (loop [β (list (m (map (fn [s] {s 1}) (states hmm))))
-            obs observations]
-       (if (empty? obs)
-         β
-         (recur
-          (concat
-           [(m (for [s (states hmm)]
-                 {s (apply + (map (fn [β_s_t+1]
-                                    (* (val β_s_t+1)
-                                       (transition-prob hmm s (key β_s_t+1))
-                                       (outcome-prob hmm
-                                                     (key β_s_t+1)
-                                                     (last obs))))
-                                  (first β)))}))]
-           β)
-          (butlast obs)))))))
+     (reduce
+      (fn [betas o]
+        (cons (reduce
+               (fn [res s]
+                 (conj res
+                       {s (sumfn (fn [beta_s_t+1]
+                                   (* (val beta_s_t+1)
+                                      (transition-prob hmm s (key beta_s_t+1))
+                                      (outcome-prob hmm (key beta_s_t+1) o)))
+                                 (first betas))}))
+               {}
+               (states hmm))
+              betas))
+      [(apply conj (map (fn [s] {s 1}) (states hmm)))]
+      (reverse observations)))))
 
 (defn- backward [hmm observations time state]
   "Get the backward probability of state at time given hmm and observations."
@@ -249,9 +250,10 @@
       [(a [i j]
          ;; Excpected num transitions divided by total num transitions from i
          ;; for all observed sequences
-         (/ (sumfn (fn [obs-seq] (sumfn (fn [t] (ξ hmm obs-seq t i j))
-                                        (range (dec (count obs-seq)))))
-                   observation-seqs)
+         ;; NOTE: Parrallelizing heavy nominator
+         (/ (apply + (pmap (fn [obs-seq] (sumfn (fn [t] (ξ hmm obs-seq t i j))
+                                                (range (dec (count obs-seq)))))
+                           observation-seqs))
             (sumfn (fn [obs-seq] (sumfn (fn [t] (γ hmm obs-seq t i))
                                         (range (dec (count obs-seq)))))
                    observation-seqs)))
