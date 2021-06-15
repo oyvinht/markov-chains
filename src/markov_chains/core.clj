@@ -3,9 +3,9 @@
 ;;;;---------------------------------------------------------------------------
 ;;;; General helper code.
 ;;;;---------------------------------------------------------------------------
-(defn- sumfn [fn seq]
-  "Map fn over seq and sum all results."
-  (apply + (map fn seq)))
+(defn- sumfn [func seq]
+  "Apply func to all elements in seq and sum all results."
+  (reduce (fn [res b] (+ res (func b))) 0 seq))
 
 (defn- n [m]
   "Helper: Normalize map of probabilities."
