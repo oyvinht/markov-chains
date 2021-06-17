@@ -122,66 +122,6 @@
       (is (= {:path '("Healthy" "Healthy" "Fever"), :prob 0.01512}
              (sut/viterbi h ["normal" "cold" "dizzy"]))))))
 
-;;;;---------------------------------------------------------------------------
-;;;; Test Baum-Welch
-;;;;---------------------------------------------------------------------------
-(deftest test-ksi-gamma
-  (testing "Seeing if gamma approx. equals sum of ksi for random HMM."
-    (let [h (sut/random-hmm 4 [:A :B :C])
-          obs [:A :A :B :C :A]]
-      (is
-       (every?
-        true?
-        (map (fn [state-num]
-               (= (float
-                   (#'sut/γ h obs state-num (nth (sut/states h) state-num)))
-                  (float
-                   (apply
-                    + (map
-                       (fn [j] (#'sut/ξ h
-                                        obs
-                                        state-num
-                                        (nth (sut/states h) state-num)
-                                        j))
-                       (sut/states h))))))
-             (range (count (sut/states h)))))))))
-
-(deftest test-baum-welch-1
-  (testing "Testing if Baum-Welch converges towards correct hi-prec. value."
-    (let [hmm (sut/baum-welch
-               (sut/init-hmm {:s1 1/5 :s2 4/5}
-                             {:s1 {:s1 1/2 :s2 1/2}
-                              :s2 {:s1 3/10 :s2 7/10}}
-                             {:s1 {:N 3/10 :E 7/10}
-                              :s2 {:N 4/5 :E 1/5}})
-               (list [:N :N :N :N :N :E :E :N :N :N]) 1)]
-      (is
-       (= 3364526423555802/15688595904862135
-          (sut/transition-prob hmm :s2 :s1))))))
-
-(deftest test-baum-welch-2
-  (testing "Testing if Baum-Welch converges towards correct value."
-    (let [hmm (sut/init-hmm {:s1 0.2 :s2 0.8}
-                            {:s1 {:s1 0.5 :s2 0.5}
-                             :s2 {:s1 0.3 :s2 0.7}}
-                            {:s1 {:N 0.3 :E 0.7}
-                             :s2 {:N 0.8 :E 0.2}})]
-      (is
-       (= (float 0.14285715)
-          (float
-           (sut/transition-prob 
-            (sut/baum-welch hmm [[:N :N :N :N :N :E :E :N :N :N]] 1000)
-            :s2 :s1)))))))
-
-(deftest test-baum-welch-3
-  (testing "Performance is reasonable for multiple sequences."
-    (let [hmm (sut/init-hmm {:s1 0.2 :s2 0.8}
-                            {:s1 {:s1 0.5 :s2 0.5}
-                             :s2 {:s1 0.3 :s2 0.7}}
-                            {:s1 {:N 0.3 :E 0.7}
-                             :s2 {:N 0.8 :E 0.2}})
-          seqs (take 20 (repeatedly (fn [] (shuffle [:N :N :N :N :N :E :E :N :N :N]))))]
-      (sut/baum-welch hmm seqs 10))))
 
 (defn serve-files []
   (prof/serve-files 8080))
