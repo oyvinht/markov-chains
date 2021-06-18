@@ -48,22 +48,23 @@
 ;;;;---------------------------------------------------------------------------
 ;;;; Code for creating HMMs.
 ;;;;---------------------------------------------------------------------------
-(defstruct hmm
-  :A ; Per state probability of moving to each next state
-  :B ; Per state probability of observing any of M
-  :M ; Vocabulary for observations/emissions
-  :π) ; Per state probability of being the sequence starting point
+(defrecord HMM
+    [A ; Per state probability of moving to each next state
+     B ; Per state probability of observing any of M
+     M ; Vocabulary for observations/emissions
+     π]) ; Per state probability of being the sequence starting point
 
 (defn make-hmm [state-sequences state-outcomes]
   "Create a HMM from a seq of state sequences and a seq of state outcomes."
   (let [tp (transition-probs state-sequences)
         op (outcome-probs state-outcomes)]
-    (struct-map
-     hmm :A (dissoc tp nil) :B op :M (keys (first (vals op))) :π (get tp nil))))
+    (->HMM (dissoc tp nil) op (keys (first (vals op))) (get tp nil))))
 
 (defn init-hmm [init-probs transition-probs outcome-probs]
-  (struct-map hmm :A transition-probs :B outcome-probs
-              :M (keys (first (vals outcome-probs))) :π init-probs))
+  (->HMM transition-probs
+         outcome-probs
+         (keys (first (vals outcome-probs)))
+         init-probs))
 
 ;;;;---------------------------------------------------------------------------
 ;;;; Code for working on HMMs
