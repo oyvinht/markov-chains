@@ -48,14 +48,65 @@
 ;;;;---------------------------------------------------------------------------
 ;;;; Code for creating HMMs.
 ;;;;---------------------------------------------------------------------------
+(defn init-prob [hmm state]
+  "Get probability of being in state at start time."
+  (get (:π hmm) state 0))
+
+(defn states [hmm]
+  "Return a list of states (state names) for an HMM."
+  (keys (:A hmm)))
+
+(defn transition-prob [hmm from-state to-state]
+  "Get probability of transitioning directly from from-state to to-state."
+  (get-in (:A hmm) [from-state to-state] 0))
+
+(defn outcome-prob [hmm state outcome]
+  "Get probability of observing outcome from the given state."
+  (get-in (:B hmm) [state outcome] 0))
+
 (defrecord HMM
     [A ; Per state probability of moving to each next state
      B ; Per state probability of observing any of M
      M ; Vocabulary for observations/emissions
      π]) ; Per state probability of being the sequence starting point
 
+(defn ->HMM [A B M π]
+  (map->HMM {:A A :B B :M M :π π :cache.fw (atom {}) :cache.bw (atom {})}))
+  
+(defn- forwards [hmm observations]
+  "Build an ordered list of maps with forward probabilities (alphas) per state."
+  (when (not (get @(:cache.fw hmm) observations))
+    (swap!
+     (:cache.fw hmm)
+     (fn [cache]
+       (assoc
+        cache observations
+        (reduce
+         (fn [alphas o]
+           (concat
+            alphas
+            [(reduce
+              (fn [res s_t+1]
+                (conj
+                 res {s_t+1 (sumfn ; Inductive case
+                             (fn [alpha_s]
+                               (* (val alpha_s)
+                                  (transition-prob hmm (key alpha_s) s_t+1)
+                                  (outcome-prob hmm s_t+1 o)))
+                             (last alphas))}))
+              {}
+              (states hmm))]))
+         [(reduce ; Base case
+           (fn [res s]
+             (conj res
+                   {s (* (init-prob hmm s)
+                         (outcome-prob hmm s (first observations)))}))
+           {} (states hmm))]
+         (rest observations))))))
+  (get @(:cache.fw hmm) observations))
+
 (defn make-hmm [state-sequences state-outcomes]
-  "Create a HMM from a seq of state sequences and a seq of state outcomes."
+      "Create a HMM from a seq of state sequences and a seq of state outcomes."
   (let [tp (transition-probs state-sequences)
         op (outcome-probs state-outcomes)]
     (->HMM (dissoc tp nil) op (keys (first (vals op))) (get tp nil))))
@@ -69,51 +120,9 @@
 ;;;;---------------------------------------------------------------------------
 ;;;; Code for working on HMMs
 ;;;;---------------------------------------------------------------------------
-(defn states [hmm]
-  "Return a list of states (state names) for an HMM."
-  (keys (:A hmm)))
-
-(defn transition-prob [hmm from-state to-state]
-  "Get probability of transitioning directly from from-state to to-state."
-  (get-in (:A hmm) [from-state to-state] 0))
-
-(defn outcome-prob [hmm state outcome]
-  "Get probability of observing outcome from the given state."
-  (get-in (:B hmm) [state outcome] 0))
-
-(defn init-prob [hmm state]
-  "Get probability of being in state at start time."
-  (get (:π hmm) state 0))
-
 (defn init-probs [hmm]
   "Get probabilities of all states at start time."
   (:π hmm))
-
-(def ^:private forwards
-  "Build an ordered list of maps with forward probabilities (alphas) per state."
-  (memoize
-   (fn [hmm observations]
-     (reduce
-      (fn [alphas o]
-        (concat
-         alphas
-         [(reduce (fn [res s_t+1]
-                    (conj
-                     res {s_t+1 (sumfn ; Inductive case
-                                 (fn [alpha_s]
-                                   (* (val alpha_s)
-                                      (transition-prob hmm (key alpha_s) s_t+1)
-                                      (outcome-prob hmm s_t+1 o)))
-                                 (last alphas))}))
-                  {}
-                  (states hmm))]))
-      [(reduce ; Base case
-        (fn [res s]
-          (conj res
-                {s (* (init-prob hmm s)
-                      (outcome-prob hmm s (first observations)))}))
-        {} (states hmm))]
-      (rest observations)))))
 
 (defn forward [hmm observations time state]
   "Get the forward probability of state at time given hmm and observations."
@@ -124,25 +133,30 @@
   (let [fwds (forwards hmm observations)]
     (sumfn (fn [s] (get (last fwds) s)) (states hmm))))
 
-(def ^:private backwards
+(defn- backwards [hmm observations]
   "Build an ordered list of maps with backward probabilities (betas) per state."
-  (memoize
-   (fn [hmm observations]
-     (reduce
-      (fn [betas o]
-        (cons (reduce
-               (fn [res s]
-                 (conj res
-                       {s (sumfn (fn [beta_s_t+1]
-                                   (* (val beta_s_t+1)
-                                      (transition-prob hmm s (key beta_s_t+1))
-                                      (outcome-prob hmm (key beta_s_t+1) o)))
-                                 (first betas))}))
-               {}
-               (states hmm))
-              betas))
-      [(apply conj (map (fn [s] {s 1}) (states hmm)))]
-      (reverse observations)))))
+  (when (not (get @(:cache.bw hmm) observations))
+    (swap!
+     (:cache.bw hmm)
+     (fn [cache]
+       (assoc
+        cache observations
+        (reduce
+         (fn [betas o]
+           (cons
+            (reduce
+             (fn [res s]
+               (conj res {s (sumfn (fn [beta_s_t+1]
+                                     (* (val beta_s_t+1)
+                                        (transition-prob hmm s (key beta_s_t+1))
+                                        (outcome-prob hmm (key beta_s_t+1) o)))
+                                   (first betas))}))
+             {}
+             (states hmm))
+            betas))
+         [(apply conj (map (fn [s] {s 1}) (states hmm)))]
+         (reverse observations))))))
+  (get @(:cache.bw hmm) observations))
 
 (defn backward [hmm observations time state]
   "Get the backward probability of state at time given hmm and observations."

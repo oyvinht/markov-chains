@@ -59,7 +59,7 @@
 ;;         (#'sut/forwards example-hmm-rn
 ;;                         [:umbrella :umbrella :no-umbrella :umbrella :umbrella])))))
 
-(defn test-fw []
+(defn test-fws []
   (criterium.core/report-result
    (criterium.core/quick-benchmark
     (#'sut/forwards (sut/init-hmm {:rain 0.5 :no-rain 0.5}
@@ -68,6 +68,19 @@
                                   {:rain {:umbrella 0.9 :no-umbrella 0.1}
                                    :no-rain {:umbrella 0.2 :no-umbrella 0.8}})
                     [:umbrella :umbrella :no-umbrella :no-umbrella :umbrella])
+    {})))
+
+(defn test-fw []
+  (criterium.core/report-result
+   (criterium.core/quick-benchmark
+    (#'sut/forward (sut/init-hmm {:rain 0.5 :no-rain 0.5}
+                                  {:rain {:rain 0.7 :no-rain 0.3}
+                                   :no-rain {:rain 0.3 :no-rain 0.7}}
+                                  {:rain {:umbrella 0.9 :no-umbrella 0.1}
+                                   :no-rain {:umbrella 0.2 :no-umbrella 0.8}})
+                   [:umbrella :umbrella :no-umbrella :no-umbrella :umbrella]
+                   2
+                   :rain)
     {})))
 
 ;; Evaluation count : 49446 in 6 samples of 8241 calls.
