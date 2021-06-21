@@ -2,36 +2,45 @@
   (:use [markov-chains.core]
         [markov-chains.utils]))
 
-(def ^:private ξ
-  (memoize
-   (fn [hmm observations t i j]
-     (str
-      "Expected state transition count:"
-      "Probability of being in state 'i' at time 't'"
-      "then in state 'j' at time 't+1'.")
-     (/ (* (forward hmm observations t i)
-           (transition-prob hmm i j)
-           (outcome-prob hmm j (nth observations (inc t)))
-           (backward hmm observations (inc t) j))
-        (sumfn (fn [i]
-                 (sumfn (fn [j]
-                          (* (forward hmm observations t i)
-                             (transition-prob hmm i j)
-                             (outcome-prob hmm j (nth observations (inc t)))
-                             (backward hmm observations (inc t) j)))
-                        (states hmm)))
-               (states hmm))))))
+(defn- ξ [hmm observations t i j]
+  (str "Expected state transition count:"
+       "Probability of being in state 'i' at time 't'"
+       "then in state 'j' at time 't+1'.")
+  (when (not (get-in @(:cache hmm) [:ξ [observations t i j]]))
+    (swap!
+     (:cache hmm)
+     (fn [cache]
+       (assoc-in
+        cache [:ξ [observations t i j]]
+        (/ (* (forward hmm observations t i)
+              (transition-prob hmm i j)
+              (outcome-prob hmm j (nth observations (inc t)))
+              (backward hmm observations (inc t) j))
+           (sumfn (fn [i]
+                    (sumfn (fn [j]
+                             (* (forward hmm observations t i)
+                                (transition-prob hmm i j)
+                                (outcome-prob hmm j (nth observations (inc t)))
+                                (backward hmm observations (inc t) j)))
+                           (states hmm)))
+                  (states hmm)))))))
+  (get-in @(:cache hmm) [:ξ [observations t i j]]))
 
-(def ^:private γ
-  (memoize
-   (fn [hmm observations t i]
-     "Expected state occupancy."
-     (/ (* (forward hmm observations t i)
-           (backward hmm observations t i))
-        (sumfn (fn [s]
-                 (* (forward hmm observations t s)
-                    (backward hmm observations t s)))
-               (states hmm))))))
+(defn- γ [hmm observations t i]
+  "Expected state occupancy."
+  (when (not (get-in @(:cache hmm) [:γ [observations t i]]))
+    (swap!
+     (:cache hmm)
+     (fn [cache]
+       (assoc-in
+        cache [:γ [observations t i]]
+        (/ (* (forward hmm observations t i)
+              (backward hmm observations t i))
+           (sumfn (fn [s]
+                    (* (forward hmm observations t s)
+                       (backward hmm observations t s)))
+                  (states hmm)))))))
+  (get-in @(:cache hmm) [:γ [observations t i]]))
 
 (defn baum-welch [hmm observation-seqs num-iterations]
   "Return an improved HMM by training on a seq of observation-seqs."

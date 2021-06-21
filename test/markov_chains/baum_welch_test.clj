@@ -60,8 +60,9 @@
                             {:s1 {:N 0.3 :E 0.7}
                              :s2 {:N 0.8 :E 0.2}})
           seqs (take 20 (repeatedly (fn [] (shuffle [:N :N :N :N :N :E :E :N :N :N]))))]
-                                        ;(prof/profile
-      (criterium.core/report-result
-       (criterium.core/quick-benchmark
-        (sut/baum-welch hmm seqs 10 )
-        {})))))
+      (prof/profile
+       ;(criterium.core/report-result
+       ;(criterium.core/quick-benchmark
+       (sut/baum-welch hmm seqs 100 )
+       ;{})
+       ))))

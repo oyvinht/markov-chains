@@ -71,16 +71,16 @@
      π]) ; Per state probability of being the sequence starting point
 
 (defn ->HMM [A B M π]
-  (map->HMM {:A A :B B :M M :π π :cache.fw (atom {}) :cache.bw (atom {})}))
+  (map->HMM {:A A :B B :M M :π π :cache (atom {})}))
   
 (defn- forwards [hmm observations]
   "Build an ordered list of maps with forward probabilities (alphas) per state."
-  (when (not (get @(:cache.fw hmm) observations))
+  (when (not (get-in @(:cache hmm) [observations :forwards]))
     (swap!
-     (:cache.fw hmm)
+     (:cache hmm)
      (fn [cache]
-       (assoc
-        cache observations
+       (assoc-in
+        cache [observations :forwards]
         (reduce
          (fn [alphas o]
            (concat
@@ -103,7 +103,7 @@
                          (outcome-prob hmm s (first observations)))}))
            {} (states hmm))]
          (rest observations))))))
-  (get @(:cache.fw hmm) observations))
+  (get-in @(:cache hmm) [observations :forwards]))
 
 (defn make-hmm [state-sequences state-outcomes]
       "Create a HMM from a seq of state sequences and a seq of state outcomes."
@@ -135,12 +135,12 @@
 
 (defn- backwards [hmm observations]
   "Build an ordered list of maps with backward probabilities (betas) per state."
-  (when (not (get @(:cache.bw hmm) observations))
+  (when (not (get-in @(:cache hmm) [observations :backwards]))
     (swap!
-     (:cache.bw hmm)
+     (:cache hmm)
      (fn [cache]
-       (assoc
-        cache observations
+       (assoc-in
+        cache [observations :backwards]
         (reduce
          (fn [betas o]
            (cons
@@ -156,7 +156,7 @@
             betas))
          [(apply conj (map (fn [s] {s 1}) (states hmm)))]
          (reverse observations))))))
-  (get @(:cache.bw hmm) observations))
+  (get-in @(:cache hmm) [observations :backwards]))
 
 (defn backward [hmm observations time state]
   "Get the backward probability of state at time given hmm and observations."
