@@ -83,6 +83,16 @@
                    :rain)
     {})))
 
+(defn test-fw-quick []
+  (#'sut/forward (sut/init-hmm {:rain 0.5 :no-rain 0.5}
+                                  {:rain {:rain 0.7 :no-rain 0.3}
+                                   :no-rain {:rain 0.3 :no-rain 0.7}}
+                                  {:rain {:umbrella 0.9 :no-umbrella 0.1}
+                                   :no-rain {:umbrella 0.2 :no-umbrella 0.8}})
+                   [:umbrella :umbrella :no-umbrella :no-umbrella :umbrella]
+                   2
+                   :rain))
+
 ;; Evaluation count : 49446 in 6 samples of 8241 calls.
 ;;              Execution time mean : 12.524465 µs
 ;;     Execution time std-deviation : 397.544214 ns
@@ -106,6 +116,12 @@
 ;;          example-hmm-rn
 ;;          [:umbrella :umbrella :no-umbrella :umbrella :umbrella])))))
 
+
+(defn test-hmm-rn-bw []
+  (#'sut/backwards
+   example-hmm-rn
+   [:umbrella :umbrella :no-umbrella :umbrella :umbrella]))
+
 ;;;;---------------------------------------------------------------------------
 ;;;; Example from Wikipedia.
 ;;;;---------------------------------------------------------------------------
@@ -116,7 +132,7 @@
 ;;                            "Fever" {"Healthy" 0.4 "Fever" 0.59 "E" 0.01}}
 ;;                           {"Healthy" {"normal" 0.5 "cold" 0.4 "dizzy" 0.1}
 ;;                            "Fever" {"normal" 0.1 "cold" 0.3 "dizzy" 0.6}})]
-                          
+
 ;;       (is (= (list
 ;;               {"Healthy" 0.68308190362154340 "Fever" 0.31691809637845664}
 ;;               {"Healthy" 0.87701103755732590 "Fever" 0.12298896244267407}
@@ -127,4 +143,3 @@
 
 (defn serve-files []
   (prof/serve-files 8080))
-                           
