@@ -25,6 +25,34 @@
   (when (not (slot-boundp hmm 'vocabulary))
     (setf (vocabulary hmm) (states hmm))))
 
+(defun make-hmm (init-probs-plist transition-probs-plist outcome-probs-plist)
+  "Convenience function to make HMM from plists stating probabilities:
+
+(make-hmm '(:s1 0.2 :s2 0.8)
+          '(:s1 (:s1 0.5 :s2 0.5) :s2 (:s1 0.3 :s2 0.7))
+          '(:s1 (:E 0.7 :N 0.3) :s2 (:E 0.2 :N 0.8)))"
+  (let ((i-probs (make-hash-table))
+        (t-probs (make-hash-table))
+        (o-probs (make-hash-table)))
+    (loop for (state prob) on init-probs-plist by #'cddr
+          do (setf (gethash state i-probs) prob))
+    (loop for (from-state transitions) on transition-probs-plist by #'cddr
+          do (setf (gethash from-state t-probs)
+                   (loop with to-state-probs = (make-hash-table)
+                         for (to-state prob) on transitions by #'cddr
+                         do (setf (gethash to-state to-state-probs) prob)
+                         finally (return to-state-probs))))
+    (loop for (state outcomes) on outcome-probs-plist by #'cddr
+          do (setf (gethash state o-probs)
+                   (loop with state-outcomes = (make-hash-table)
+                         for (outcome prob) on outcomes by #'cddr
+                         do (setf (gethash outcome state-outcomes) prob)
+                         finally (return state-outcomes))))
+    (make-instance 'hmm
+                   :init-probabilities i-probs
+                   :transition-probabilities t-probs
+                   :outcome-probabilities o-probs)))
+
 ;;------------------------------------------------------------------------------
 ;; Various helper functions
 ;;------------------------------------------------------------------------------
@@ -84,7 +112,7 @@
   "Create a nested hash table with outcome probabilities i->j->prob"
   (counts->probs (outcome-counts state-outcomes)))
 
-(defun make-hmm (state-sequences state-outcomes)
+(defun init-hmm (state-sequences state-outcomes)
   "Make a Hidden Markov Model from sets of initial state sequences and outcomes"
   (let ((tp (transition-probs state-sequences))
         (op (outcome-probs state-outcomes)))

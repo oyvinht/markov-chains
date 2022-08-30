@@ -30,13 +30,13 @@
 #+5am
 (5am:test test-transition-probs
   "Checking probability of transitioning to state b when in a (25%)"
-  (let ((hmm (make-hmm *example-state-sequences* *example-state-outcomes*)))
+  (let ((hmm (init-hmm *example-state-sequences* *example-state-outcomes*)))
     (5am:is (= (transition-prob hmm 'a 'b) 0.25))))
 
 #+5am
 (5am:test test-outcome-probs
   "Checking probability for getting outcome 2 from state b (1/6)"
-  (let ((hmm (make-hmm *example-state-sequences* *example-state-outcomes*)))
+  (let ((hmm (init-hmm *example-state-sequences* *example-state-outcomes*)))
     (5am:is (= (outcome-prob hmm 'b 2) 1/6))))
 
 ;; Test forward algorithm using example from Russel & Norvig
